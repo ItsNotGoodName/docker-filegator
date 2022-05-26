@@ -1,0 +1,66 @@
+---
+name: Docker
+
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  AUTHOR: ${{ github.repository_owner }}
+  IMAGE_NAME: ${{ github.repository_owner }}/filegator
+  FILEGATOR_REPOSITORY: filegator/filegator
+  TITLE: FileGator
+  DESCRIPTION: FileGator is a free, open-source, self-hosted web application for managing files and folders.
+  DOCUMENTATION_URL: ${{ github.server_url }}/${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Docker Login
+        uses: docker/login-action@v2.0.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get latest release
+        id: filegator
+        uses: pozetroninc/github-action-get-latest-release@v0.5.0
+        with:
+          repository: ${{ env.FILEGATOR_REPOSITORY }}
+          excludes: prerelease, draft
+
+      - name: Docker Metadata action
+        id: meta
+        uses: docker/metadata-action@v4.0.1
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          labels: |
+            org.opencontainers.image.title=${{ env.TITLE }}
+            org.opencontainers.image.description=${{ env.DESCRIPTION }}
+            org.opencontainers.image.authors=${{ env.AUTHOR }}
+            org.opencontainers.image.vendor=${{ env.AUTHOR }}
+            org.opencontainers.image.documentation=${{ env.DOCUMENTATION_URL }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ steps.filegator.outputs.release }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v3.0.0
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            FILEGATOR_RELEASE=${{ steps.filegator.outputs.release }}
+            IMAGE_BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+            IMAGE_VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
+            DOCKER_HUB_USER=${{ env.AUTHOR }}
